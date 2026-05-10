@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "Visit": {
+      "title": "Visit",
+      "description": "A record of a user visiting the website",
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the visit occurred"
+        },
+        "userAgent": {
+          "type": "string",
+          "description": "Browser user agent"
+        }
+      },
+      "required": ["timestamp"]
+    }
+  },
+  "firestore": {
+    "visits": {
+      "schema": { "$ref": "#/entities/Visit" },
+      "description": "Collection of website visit logs"
+    }
+  }
+}

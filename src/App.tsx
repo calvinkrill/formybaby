@@ -16,10 +16,38 @@ import {
   Star,
   ChevronLeft,
   X,
-  Play
+  Play,
+  Users
 } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import firebaseConfig from '../firebase-applet-config.json';
 import { LETTERS, MOODS, MEMORIES, SONGS, DAILY_MESSAGES } from './constants';
 import { Letter, MoodResponse } from './types';
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path,
+    timestamp: new Date().toISOString()
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // Views
 type View = 'splash' | 'landing' | 'home' | 'letters' | 'moods' | 'gallery' | 'music' | 'heartbeat' | 'secret';
@@ -85,8 +113,35 @@ export default function App() {
   const [isUnlocked, setIsUnlocked] = useState(false);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [totalVisits, setTotalVisits] = useState<number | null>(null);
 
   useEffect(() => {
+    // Log the visit
+    const logVisit = async () => {
+      try {
+        await addDoc(collection(db, 'visits'), {
+          timestamp: serverTimestamp(),
+          userAgent: navigator.userAgent
+        });
+      } catch (error) {
+        // Silently handle visit logging errors to not break UX
+        console.error('Error logging visit:', error);
+      }
+    };
+    logVisit();
+
+    // Listen for total visits (count)
+    // Note: In Firestore, for real-time counts of a large collection, 
+    // a counter doc is better, but for this small-scale app, 
+    // we can listen to the collection snapshot size (though expensive at scale)
+    // or just listen to the latest snapshot.
+    const q = query(collection(db, 'visits'));
+    const unsubscribeVisits = onSnapshot(q, (snapshot) => {
+      setTotalVisits(snapshot.size);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'visits');
+    });
+
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
@@ -104,6 +159,7 @@ export default function App() {
     }
 
     return () => {
+      unsubscribeVisits();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -533,13 +589,27 @@ export default function App() {
       </AnimatePresence>
 
       <footer className="fixed bottom-0 left-0 w-full p-6 flex flex-col items-center pointer-events-none space-y-4">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3 bg-white/5 px-5 py-2 rounded-full border border-white/5 backdrop-blur-md transition-all">
-            <div className={`w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)] ${isOnline ? 'bg-green-500 shadow-green-500/50' : 'bg-red-500 shadow-red-500/50 animate-pulse'}`}></div>
-            <span className="text-[9px] font-sans tracking-[0.2em] text-slate-500 uppercase italic">
-              {isOnline ? 'Connected' : 'Offline Mode'} • created by camz
-            </span>
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 bg-white/5 px-5 py-2 rounded-full border border-white/5 backdrop-blur-md transition-all">
+              <div className={`w-1.5 h-1.5 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)] ${isOnline ? 'bg-green-500 shadow-green-500/50' : 'bg-red-500 shadow-red-500/50 animate-pulse'}`}></div>
+              <span className="text-[9px] font-sans tracking-[0.2em] text-slate-500 uppercase italic">
+                {isOnline ? 'Connected' : 'Offline Mode'} • created by camz
+              </span>
+            </div>
           </div>
+          {totalVisits !== null && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/10 backdrop-blur-sm"
+            >
+              <Users size={10} className="text-indigo-400" />
+              <span className="text-[8px] font-sans tracking-[0.1em] text-indigo-300 uppercase">
+                {totalVisits} visits of love
+              </span>
+            </motion.div>
+          )}
         </div>
         <p className="text-[8px] text-slate-600 uppercase tracking-[0.4em]">
           thank you for existing, baby.
